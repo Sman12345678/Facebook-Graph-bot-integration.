@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, redirect, url_for
+from flask import Flask, request, jsonify, redirect, url_for,render_template
 import requests
 import os
 
@@ -9,6 +9,10 @@ FACEBOOK_APP_SECRET = os.environ.get('FACEBOOK_APP_SECRET')
 REDIRECT_URI = 'YOUR_REDIRECT_URI'  # Should match the redirect URI configured in your Facebook App settings
 WEBHOOK_VERIFY_TOKEN = 'YOUR_WEBHOOK_VERIFY_TOKEN' # A secret token for webhook verification
 
+@app.route('/')
+def home():
+    return render_template('home.html')
+    
 @app.route('/facebook_login')
 def facebook_login():
     auth_url = f'https://www.facebook.com/v23.0/dialog/oauth?client_id={FACEBOOK_APP_ID}&redirect_uri={REDIRECT_URI}&scope=public_profile,email,pages_manage_posts,pages_read_engagement'
