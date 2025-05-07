@@ -1,7 +1,9 @@
 from flask import Flask, request, jsonify, redirect, url_for,render_template
 import requests
 import os
-
+#just started this😁, i wish it works.
+#i am gon get some customers soon i think. 
+#let's collab 👌.
 app = Flask(__name__)
 
 FACEBOOK_APP_ID = os.environ.get('FACEBOOK_APP_ID')
