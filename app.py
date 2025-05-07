@@ -1,93 +1,127 @@
-from flask import Flask, request, jsonify, redirect, url_for,render_template
+from flask import Flask, request, jsonify
 import requests
-import os
-#just started this😁, i wish it works.
-#i am gon get some customers soon i think. 
-#let's collab 👌.
+import json
+'''We are still going to change it to our name
+like you you like, import .... as Àrch'''
 app = Flask(__name__)
 
-FACEBOOK_APP_ID = os.environ.get('FACEBOOK_APP_ID')
-FACEBOOK_APP_SECRET = os.environ.get('FACEBOOK_APP_SECRET')
-REDIRECT_URI = 'YOUR_REDIRECT_URI'  # Should match the redirect URI configured in your Facebook App settings
-WEBHOOK_VERIFY_TOKEN = 'YOUR_WEBHOOK_VERIFY_TOKEN' # A secret token for webhook verification
+# This is your secret handshake... don't lose it!
+APP_ID = 'YOUR_APP_ID'
+APP_SECRET = 'YOUR_APP_SECRET'
+VERIFY_TOKEN = 'YOUR_VERIFY_TOKEN'
+DEFAULT_PAGE_ACCESS_TOKEN = 'WILL_BE_UPDATED_DURING_RUNTIME'  # Used for replying
 
-@app.route('/')
-def home():
-    return render_template('home.html')
+# Endpoint 1: Receive short-lived token, exchange it for long-lived one
+@app.route('/fb_login', methods=['POST'])
+def fb_login():
+    data = request.get_json()
+    user_access_token = data.get('access_token')
+    if not user_access_token:
+        return jsonify({'error': 'No token, no fun!'}), 400
+
+    print("Exchanging short-lived token... for the long-term relationship!")
+    token_url = f"https://graph.facebook.com/v19.0/oauth/access_token"
+    params = {
+        'grant_type': 'fb_exchange_token',
+        'client_id': APP_ID,
+        'client_secret': APP_SECRET,
+        'fb_exchange_token': user_access_token
+    }
+    response = requests.get(token_url, params=params)
+    data = response.json()
+    return jsonify({'long_lived_token': data.get('access_token')})
+
+
+# Endpoint 2: Use long-lived token to get Page access token
+@app.route('/get_page_token', methods=['POST'])
+def get_page_token():
+    data = request.get_json()
+    long_lived_token = data.get('long_lived_token')
+    if not long_lived_token:
+        return jsonify({'error': 'Token missing!'}), 400
+
+    print("Fetching user's pages... let’s peek behind the curtain!")
+    pages_url = f"https://graph.facebook.com/v19.0/me/accounts"
+    pages_response = requests.get(pages_url, params={'access_token': long_lived_token}).json()
     
-@app.route('/facebook_login')
-def facebook_login():
-    auth_url = f'https://www.facebook.com/v23.0/dialog/oauth?client_id={FACEBOOK_APP_ID}&redirect_uri={REDIRECT_URI}&scope=public_profile,email,pages_manage_posts,pages_read_engagement'
-    return redirect(auth_url)
+    if not pages_response.get('data'):
+        return jsonify({'error': 'No pages found. Create a page, human!'}), 404
 
-@app.route('/facebook_callback')
-def facebook_callback():
-    code = request.args.get('code')
-    if code:
-        # Exchange the authorization code for an access token
-        token_url = 'https://graph.facebook.com/v23.0/oauth/access_token'
-        token_params = {
-            'client_id': FACEBOOK_APP_ID,
-            'client_secret': FACEBOOK_APP_SECRET,
-            'code': code,
-            'redirect_uri': REDIRECT_URI
-        }
-        token_response = requests.get(token_url, params=token_params)
-        token_data = token_response.json()
-        user_access_token = token_data.get('access_token')
+    page_info = pages_response['data'][0]
+    page_id = page_info['id']
+    page_access_token = page_info['access_token']
 
-        if user_access_token:
-            # Get the list of managed pages
-            pages_url = f'https://graph.facebook.com/v23.0/me/accounts'
-            pages_params = {'access_token': user_access_token}
-            pages_response = requests.get(pages_url, params=pages_params)
-            pages_data = pages_response.json().get('data', [])
+    # Subscribe app to page (make chatbot official)
+    subscribe_app_to_page(page_id, page_access_token)
 
-            # Here you would typically store the user access token and present
-            # the list of pages to the user to select one.
+    global DEFAULT_PAGE_ACCESS_TOKEN
+    DEFAULT_PAGE_ACCESS_TOKEN = page_access_token
 
-            return jsonify({'pages': pages_data, 'user_access_token': user_access_token})
-        else:
-            return jsonify({'error': 'Failed to retrieve access token'})
+    return jsonify({'page_id': page_id, 'page_access_token': page_access_token})
+
+
+# Function: Subscribe the app to the page
+def subscribe_app_to_page(page_id, page_access_token):
+    print(f"Subscribing app to page {page_id}... it’s getting serious!")
+    url = f"https://graph.facebook.com/v19.0/{page_id}/subscribed_apps"
+    response = requests.post(url, params={'access_token': page_access_token})
+    print("Subscription response:", response.text)
+
+
+# Webhook verification - Like a secret knock at the door
+@app.route('/webhook', methods=['GET'])
+def verify_webhook():
+    mode = request.args.get('hub.mode')
+    token = request.args.get('hub.verify_token')
+    challenge = request.args.get('hub.challenge')
+    if mode == 'subscribe' and token == VERIFY_TOKEN:
+        print("Webhook verified. Party started!")
+        return challenge, 200
     else:
-        error = request.args.get('error')
-        error_description = request.args.get('error_description')
-        return jsonify({'error': error, 'error_description': error_description})
+        print("No entry! Wrong token.")
+        return 'Verification token mismatch', 403
 
-@app.route('/get_page_token/<page_id>')
-def get_page_token(page_id):
-    user_access_token = request.args.get('user_access_token') # You'd likely retrieve this from your database
-    if user_access_token and page_id:
-        page_token_url = f'https://graph.facebook.com/v23.0/{page_id}'
-        page_token_params = {'fields': 'access_token', 'access_token': user_access_token}
-        page_token_response = requests.get(page_token_url, params=page_token_params)
-        page_token_data = page_token_response.json()
-        page_access_token = page_token_data.get('access_token')
 
-        if page_access_token:
-            # Now you have the Page access token. Store it securely and associate it with the user and page.
-            return jsonify({'page_id': page_id, 'page_access_token': page_access_token})
-        else:
-            return jsonify({'error': f'Failed to retrieve page access token for page ID: {page_id}'})
-    else:
-        return jsonify({'error': 'Missing user access token or page ID'})
+#Seems i will use previous messageHandler
+@app.route('/webhook', methods=['POST'])
+def receive_message():
+    data = request.get_json()
+    print("Incoming data from Facebook land:", json.dumps(data, indent=2))
 
-@app.route('/webhook', methods=['GET', 'POST'])
-def webhook():
-    if request.method == 'GET':
-        # Webhook verification
-        verify_token = request.args.get('hub.verify_token')
-        challenge = request.args.get('hub.challenge')
-        if verify_token == WEBHOOK_VERIFY_TOKEN:
-            return challenge
-        else:
-            return 'Error, invalid verification token', 403
-    elif request.method == 'POST':
-        data = request.get_json()
-        # Process webhook events (e.g., new messages) here
-        print("Webhook received:", data)
-        # You would then use the Page access token to send a response
-        return 'OK', 200
+    for entry in data.get('entry', []):
+        for messaging_event in entry.get('messaging', []):
+            sender_id = messaging_event['sender']['id']
+            if 'message' in messaging_event:
+                message_text = messaging_event['message'].get('text')
+                print(f"User said: {message_text}")
+                send_message(sender_id, "Hi! I'm your cheerful chatbot. How can I assist you today?")
+
+    return 'EVENT_RECEIVED', 200
+
+
+# Function to send a message back using the Messenger API
+def send_message(recipient_id, message_text):
+    print(f"Sending message to {recipient_id}... hold my coffee!")
+    params = {
+        'access_token': DEFAULT_PAGE_ACCESS_TOKEN
+    }
+    headers = {
+        'Content-Type': 'application/json'
+    }
+    data = {
+        'recipient': {'id': recipient_id},
+        'message': {'text': message_text}
+    }
+
+    response = requests.post(
+        'https://graph.facebook.com/v19.0/me/messages',
+        params=params,
+        headers=headers,
+        data=json.dumps(data)
+    )
+    print("Message response:", response.text)
+
 
 if __name__ == '__main__':
+    print("Starting Flask app... brace yourself, chatbot powers activate!")
     app.run(debug=True,host='0.0.0.0',port=3000)
