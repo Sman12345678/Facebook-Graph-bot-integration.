@@ -1,55 +1,116 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Login with Facebook</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login with Facebook</title>
+  <style>
+    body {
+      background: linear-gradient(to right, #4e54c8, #8f94fb);
+      color: white;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      text-align: center;
+      padding-top: 100px;
+    }
+
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 40px;
+    }
+
+    #fb-button {
+      margin-top: 30px;
+    }
+
+    #status {
+      margin-top: 20px;
+      font-size: 1.2em;
+    }
+
+    .box {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 30px;
+      border-radius: 12px;
+      width: 400px;
+      margin: auto;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+  </style>
 </head>
 <body>
-<!-- Not Sure What i am doing lol.😳-->
-    <div id="fb-root"></div>
-    <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v23.0&appId={YOUR_APP_ID}&autoLogAppEvents=1" nonce="YOUR_NONCE"></script>
-    <fb:login-button scope="public_profile,email,pages_manage_posts,pages_read_engagement" onlogin="checkLoginState();">
-    </fb:login-button>
-    <div id="status">
+  <div class="box">
+    <h1>Facebook Bot Portal</h1>
+    <p>Login to activate your page chatbot</p>
+
+    <div id="fb-button">
+      <fb:login-button 
+        scope="public_profile,email,pages_show_list,pages_manage_metadata,pages_read_engagement,pages_messaging"
+        onlogin="checkLoginState();">
+      </fb:login-button>
     </div>
 
-    <script>
-      function statusChangeCallback(response) {  // Called with the results from FB.getLoginStatus().
-        console.log('statusChangeCallback');
-        console.log(response);                   // The current login status of the person.
-        if (response.status === 'connected') {   // Logged into your webpage and Facebook.
-          console.log('Successfully logged into Facebook!');
-          // Here you would typically make an API call to your server
-          // to exchange the code for an access token and fetch managed pages.
-          // You can get the user's ID with response.authResponse.userID
-          // and the short-lived access token with response.authResponse.accessToken
-          document.getElementById('status').innerHTML = 'Thanks for logging in, see console for details.';
-        } else if (response.status === 'not_authorized') { // The person is logged into Facebook, but not your webpage.
-          document.getElementById('status').innerHTML = 'Please log ' +
-            'into this webpage using your Facebook account.';
-        } else {                                 // The person is not logged into Facebook, so you're not sure if
-          document.getElementById('status').innerHTML = 'Please log ' +
-            'into Facebook.';
+    <div id="status">Waiting for you to press the magic button...</div>
+  </div>
+
+  <script>
+    // Load the Facebook SDK
+    window.fbAsyncInit = function() {
+      FB.init({
+        appId      : 'YOUR_APP_ID', // Replace this!
+        cookie     : true,
+        xfbml      : true,
+        version    : 'v19.0'
+      });
+
+      FB.AppEvents.logPageView();
+    };
+
+    (function(d, s, id){
+      let js, fjs = d.getElementsByTagName(s)[0];
+      if (d.getElementById(id)) return;
+      js = d.createElement(s); js.id = id;
+      js.src = "https://connect.facebook.net/en_US/sdk.js";
+      fjs.parentNode.insertBefore(js, fjs);
+    }(document, 'script', 'facebook-jssdk'));
+
+    // Called when the user logs in
+    function checkLoginState() {
+      FB.getLoginStatus(function(response) {
+        if (response.status === 'connected') {
+          const accessToken = response.authResponse.accessToken;
+          document.getElementById('status').innerText = "Logged in! Brewing chatbot magic...";
+
+          // Step 1: Exchange token
+          fetch('/fb_login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ access_token: accessToken })
+          })
+          .then(res => res.json())
+          .then(data => {
+            const longToken = data.long_lived_token;
+
+            // Step 2: Get page token & activate bot
+            return fetch('/get_page_token', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ long_lived_token: longToken })
+            });
+          })
+          .then(res => res.json())
+          .then(result => {
+            document.getElementById('status').innerText =
+              "Your chatbot is live on page ID: " + result.page_id;
+          })
+          .catch(err => {
+            console.error(err);
+            document.getElementById('status').innerText = "Oops! Something went wrong.";
+          });
+        } else {
+          document.getElementById('status').innerText = "Please log in to Facebook first!";
         }
-      }
-
-      function checkLoginState() {               // Called when a person finishes with the Login Button.
-        FB.getLoginStatus(function(response) {   // See the Graph API reference for fb.getLoginStatus() for the details about the response object.
-          statusChangeCallback(response);
-        });
-      }
-
-      window.fbAsyncInit = function() {
-        FB.init({
-          appId      : '{YOUR_APP_ID}',
-          cookie     : true,                     // Enable cookies to allow the server to access the session.
-          xfbml      : true,                     // Parse social plugins on this webpage.
-          version    : 'v23.0'           // Use Graph API version v23.0
-        });
-
-        FB.getLoginStatus(function(response) {   // Called after the JS.
-          statusChangeCallback(response);        // Returns the login status of the person.
-        });
-      };
-    </script>
+      });
+    }
+  </script>
 </body>
 </html>
