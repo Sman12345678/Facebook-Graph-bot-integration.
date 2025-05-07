@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify,render_template
 import requests
 import json
 '''We are still going to change it to our name
@@ -11,6 +11,9 @@ APP_SECRET = 'YOUR_APP_SECRET'
 VERIFY_TOKEN = 'YOUR_VERIFY_TOKEN'
 DEFAULT_PAGE_ACCESS_TOKEN = 'WILL_BE_UPDATED_DURING_RUNTIME'  # Used for replying
 
+@app.route('/')
+def home():
+    return render_template('home.html')
 # Endpoint 1: Receive short-lived token, exchange it for long-lived one
 @app.route('/fb_login', methods=['POST'])
 def fb_login():
