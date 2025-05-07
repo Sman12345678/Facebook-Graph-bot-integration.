@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login with Facebook</title>
+</head>
+<body>
+<!-- Not Sure What i am doing lol.😳-->
+    <div id="fb-root"></div>
+    <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v23.0&appId={YOUR_APP_ID}&autoLogAppEvents=1" nonce="YOUR_NONCE"></script>
+    <fb:login-button scope="public_profile,email,pages_manage_posts,pages_read_engagement" onlogin="checkLoginState();">
+    </fb:login-button>
+    <div id="status">
+    </div>
+
+    <script>
+      function statusChangeCallback(response) {  // Called with the results from FB.getLoginStatus().
+        console.log('statusChangeCallback');
+        console.log(response);                   // The current login status of the person.
+        if (response.status === 'connected') {   // Logged into your webpage and Facebook.
+          console.log('Successfully logged into Facebook!');
+          // Here you would typically make an API call to your server
+          // to exchange the code for an access token and fetch managed pages.
+          // You can get the user's ID with response.authResponse.userID
+          // and the short-lived access token with response.authResponse.accessToken
+          document.getElementById('status').innerHTML = 'Thanks for logging in, see console for details.';
+        } else if (response.status === 'not_authorized') { // The person is logged into Facebook, but not your webpage.
+          document.getElementById('status').innerHTML = 'Please log ' +
+            'into this webpage using your Facebook account.';
+        } else {                                 // The person is not logged into Facebook, so you're not sure if
+          document.getElementById('status').innerHTML = 'Please log ' +
+            'into Facebook.';
+        }
+      }
+
+      function checkLoginState() {               // Called when a person finishes with the Login Button.
+        FB.getLoginStatus(function(response) {   // See the Graph API reference for fb.getLoginStatus() for the details about the response object.
+          statusChangeCallback(response);
+        });
+      }
+
+      window.fbAsyncInit = function() {
+        FB.init({
+          appId      : '{YOUR_APP_ID}',
+          cookie     : true,                     // Enable cookies to allow the server to access the session.
+          xfbml      : true,                     // Parse social plugins on this webpage.
+          version    : 'v23.0'           // Use Graph API version v23.0
+        });
+
+        FB.getLoginStatus(function(response) {   // Called after the JS.
+          statusChangeCallback(response);        // Returns the login status of the person.
+        });
+      };
+    </script>
+</body>
+</html>
