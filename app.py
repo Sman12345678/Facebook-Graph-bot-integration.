@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify,render_template
 import requests
 import json
 '''We are still going to change it to our name
-like you you like, import .... as Àrch'''
+like you always do, import .... as Àrch'''
 app = Flask(__name__)
 
 # This is your secret handshake... don't lose it!
