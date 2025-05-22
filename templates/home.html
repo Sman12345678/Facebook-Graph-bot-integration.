@@ -3,44 +3,150 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Login with Facebook</title>
+  <title>Nexus AI Portal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Exo+2:wght@300;500&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --neon-purple: #bc13fe;
+      --cyber-blue: #00f3ff;
+      --matrix-green: #00ff9d;
+      --dark-void: #0a0a1a;
+      --hologram-gradient: linear-gradient(135deg, #2A0B45 0%, #6C1BDB 50%, #8E44AD 100%);
+    }
+
     body {
-      background: linear-gradient(to right, #4e54c8, #8f94fb);
+      background: var(--hologram-gradient);
       color: white;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-family: 'Exo 2', sans-serif;
       text-align: center;
-      padding-top: 100px;
+      min-height: 100vh;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(45deg, 
+                  rgba(188,19,254,0.1) 0%, 
+                  rgba(0,243,255,0.1) 50%, 
+                  rgba(0,255,157,0.1) 100%);
+      pointer-events: none;
     }
 
     h1 {
-      font-size: 2.5em;
-      margin-bottom: 40px;
-    }
-
-    #fb-button {
-      margin-top: 30px;
-    }
-
-    #status {
-      margin-top: 20px;
-      font-size: 1.2em;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 2.8em;
+      margin-bottom: 30px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      background: linear-gradient(45deg, var(--neon-purple), var(--cyber-blue));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      text-shadow: 0 0 15px rgba(188,19,254,0.5);
     }
 
     .box {
-      background: rgba(255, 255, 255, 0.1);
-      padding: 30px;
-      border-radius: 12px;
-      width: 400px;
-      margin: auto;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(12px);
+      padding: 40px;
+      border-radius: 16px;
+      width: 500px;
+      margin: 20px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255,255,255,0.1);
+      position: relative;
+      overflow: hidden;
+      transform-style: preserve-3d;
+    }
+
+    .box::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(45deg, 
+                  transparent 20%, 
+                  rgba(188,19,254,0.1) 50%, 
+                  transparent 80%);
+      transform: rotate(45deg);
+      animation: holo-glow 6s infinite;
+    }
+
+    #fb-button {
+      margin: 40px 0;
+    }
+
+    .fb-login-button {
+      transform: scale(1.3);
+      filter: drop-shadow(0 0 10px rgba(188,19,254,0.5));
+    }
+
+    #status {
+      margin-top: 30px;
+      font-size: 1.2em;
+      color: var(--cyber-blue);
+      min-height: 60px;
+      padding: 15px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      border: 1px solid rgba(188,19,254,0.3);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Terms Panel */
+    .terms-panel {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.5);
+      padding: 12px 24px;
+      border-radius: 8px;
+      backdrop-filter: blur(5px);
+      border: 1px solid var(--neon-purple);
+    }
+
+    .terms-panel a {
+      color: var(--cyber-blue);
+      text-decoration: none;
+      margin: 0 10px;
+      font-size: 0.9em;
+    }
+
+    /* Animations */
+    @keyframes holo-glow {
+      0% { opacity: 0.1; transform: rotate(45deg) translate(-30%, -30%); }
+      50% { opacity: 0.3; }
+      100% { opacity: 0.1; transform: rotate(45deg) translate(30%, 30%); }
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.8; }
+      50% { opacity: 1; }
+      100% { opacity: 0.8; }
+    }
+
+    .pulse-text {
+      animation: pulse 2s infinite;
     }
   </style>
 </head>
 <body>
   <div class="box">
-    <h1>Facebook Bot Portal</h1>
-    <p>Login to activate your page chatbot</p>
+    <h1>NEXUS AI PORTAL</h1>
+    <p class="pulse-text">Activate Neural Interface</p>
 
     <div id="fb-button">
       <fb:login-button 
@@ -49,9 +155,15 @@
       </fb:login-button>
     </div>
 
-    <div id="status">Waiting for you to press the magic button...</div>
+    <div id="status">Initializing quantum link...</div>
   </div>
 
+  <div class="terms-panel">
+    <a href="/terms">Terms of Service</a>
+    <a href="/privacy">Privacy Matrix</a>
+  </div>
+
+  <!-- Original JavaScript remains untouched below -->
   <script>
     // Load the Facebook SDK
     window.fbAsyncInit = function() {
@@ -59,7 +171,7 @@
         appId      : 'YOUR_APP_ID', // Replace this!
         cookie     : true,
         xfbml      : true,
-        version    : 'v19.0'
+        version    : 'v22.0'
       });
 
       FB.AppEvents.logPageView();
@@ -78,7 +190,7 @@
       FB.getLoginStatus(function(response) {
         if (response.status === 'connected') {
           const accessToken = response.authResponse.accessToken;
-          document.getElementById('status').innerText = "Logged in! Brewing chatbot magic...";
+          document.getElementById('status').innerText = "Authenticating quantum signature...";
 
           // Step 1: Exchange token
           fetch('/fb_login', {
@@ -100,14 +212,14 @@
           .then(res => res.json())
           .then(result => {
             document.getElementById('status').innerText =
-              "Your chatbot is live on page ID: " + result.page_id;
+              "Neural link established with ID: " + result.page_id;
           })
           .catch(err => {
             console.error(err);
-            document.getElementById('status').innerText = "Oops! Something went wrong.";
+            document.getElementById('status').innerText = "Quantum flux detected! Retry sequence...";
           });
         } else {
-          document.getElementById('status').innerText = "Please log in to Facebook first!";
+          document.getElementById('status').innerText = "Authorization protocol required!";
         }
       });
     }
