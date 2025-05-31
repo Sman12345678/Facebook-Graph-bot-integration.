@@ -1,2 +1,11 @@
-flask
+Flask
+Flask-SQLAlchemy
+Flask-Cors
+Werkzeug
 requests
+python-dotenv
+google-generativeai
+gunicorn
+scikit-learn
+joblib
+bcrypt
