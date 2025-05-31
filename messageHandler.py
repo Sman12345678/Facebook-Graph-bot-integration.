@@ -149,4 +149,4 @@ def send_order_email_to_owner(bot_request, order):
     msg['From'] = "noreply@yourdomain.com"
     msg['To'] = owner_email
     with smtplib.SMTP('localhost') as s:
-        s.sendmail(msg['From'], [owner_email], msg.as_string())m
+        s.sendmail(msg['From'], [owner_email], msg.as_string())
