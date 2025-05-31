@@ -12,14 +12,14 @@ UPLOAD_FOLDER = "static/uploads"
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png"}
 
 app = Flask(__name__)
-@app.before_first_request
+
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", "sqlite:///site.db")
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "supersecret")
 db.init_app(app)
 app.register_blueprint(auth_bp)
 
-
+@app.before_first_request
 def ensure_admin():
     db.create_all()
     admin = User.query.filter_by(username="SULEIMAN").first()
