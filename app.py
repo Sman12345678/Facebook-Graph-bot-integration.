@@ -19,8 +19,7 @@ app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "supersecret")
 db.init_app(app)
 app.register_blueprint(auth_bp)
 
-@app.before_first_request
-def ensure_admin():
+with app.app_context():
     db.create_all()
     admin = User.query.filter_by(username="SULEIMAN").first()
     if not admin:
