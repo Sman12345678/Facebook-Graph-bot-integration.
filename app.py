@@ -1,10 +1,11 @@
 import os
+import logging
 from flask import Flask, render_template, request, session, redirect, url_for, flash, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from models import db, User, BotRequest, ProductImage, Order
 from auth import auth_bp, login_required, admin_login_required
 from facebook import get_pages, exchange_code_for_token
-from messageHandler import handle_message
+from messageHandler import handle_message, send_text_fb, send_image_by_attachment_id
 from werkzeug.utils import secure_filename
 from autopost import start_autopost
 
@@ -19,7 +20,32 @@ db.init_app(app)
 app.register_blueprint(auth_bp)
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-#===(^_^)===#
+
+# =================== Powerful Logging Setup ===================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(message)s',
+)
+webhook_logger = logging.getLogger("webhook")
+webhook_logger.propagate = False
+
+class EmojiStreamHandler(logging.StreamHandler):
+    LEVEL_EMOJIS = {
+        logging.DEBUG: "🐛",
+        logging.INFO: "ℹ️",
+        logging.WARNING: "⚠️",
+        logging.ERROR: "❌",
+        logging.CRITICAL: "🔥",
+    }
+    def emit(self, record):
+        emoji = self.LEVEL_EMOJIS.get(record.levelno, "")
+        record.msg = f"{emoji} {record.msg}"
+        super().emit(record)
+
+# Remove default handlers if any and add emoji handler
+for h in webhook_logger.handlers[:]:
+    webhook_logger.removeHandler(h)
+webhook_logger.addHandler(EmojiStreamHandler())
 
 with app.app_context():
     db.create_all()
@@ -147,33 +173,53 @@ def webhook():
         token = request.args.get('hub.verify_token')
         challenge = request.args.get('hub.challenge')
         if token == os.environ.get('FB_VERIFY_TOKEN'):
+            webhook_logger.info("Webhook verification passed! 🚦")
             return challenge
+        webhook_logger.warning("Webhook verification failed! 🚫")
         return "Verification failed", 403
     data = request.get_json()
+    webhook_logger.info(f"Received webhook event! 📩\nData: {data}")
     for entry in data.get('entry', []):
+        webhook_logger.info(f"Processing entry: {entry}")
         for event in entry.get('messaging', []):
             sender_psid = event['sender']['id']
             page_id = entry.get('id')
+            webhook_logger.info(f"New message event from sender_psid: {sender_psid} on page_id: {page_id}")
             bot_request = BotRequest.query.filter_by(fb_page_id=page_id, approved=True).first()
             if not bot_request:
+                webhook_logger.warning(f"No approved bot for page_id: {page_id} 🚷")
                 continue
             context = {}
             if 'postback' in event and event['postback'].get('payload') == 'GET_STARTED_PAYLOAD':
-                reply = "Welcome! How can I help you? (Type /help)"
-                messageHandler.send_image_fb(sender_psid, reply, bot_request.page_access_token)
+                webhook_logger.info(f"GET_STARTED_PAYLOAD received from {sender_psid} 🚀")
+                send_text_fb(sender_psid, "Welcome! How can I help you? (Type /help)", bot_request.page_access_token)
             elif 'message' in event:
                 text = event['message'].get('text')
                 if 'attachments' in event['message']:
                     for att in event['message']['attachments']:
+                        webhook_logger.info(f"Received attachment from {sender_psid}: {att}")
                         if att['type'] == 'image':
                             img_url = att['payload']['url']
                             import requests
                             img_data = requests.get(img_url).content
-                            reply = handle_message(sender_psid, "image", bot_request, image=img_data, context=context)
-                            messageHandler.send_image_fb(sender_psid, reply, bot_request.page_access_token)
+                            webhook_logger.info(f"Downloading image from URL: {img_url} 🖼️")
+                            reply_type, reply_content = handle_message(sender_psid, "image", bot_request, image=img_data, context=context)
+                            if reply_type == "image":
+                                webhook_logger.info(f"Sending image with attachment_id: {reply_content} to {sender_psid} 📷")
+                                send_image_by_attachment_id(sender_psid, reply_content, bot_request.page_access_token)
+                            else:
+                                webhook_logger.info(f"Sending text to {sender_psid}: {reply_content} 💬")
+                                send_text_fb(sender_psid, reply_content, bot_request.page_access_token)
                 elif text:
-                    reply = handle_message(sender_psid, text, bot_request, context=context)
-                    messageHandler.send_image_fb(sender_psid, reply, bot_request.page_access_token)
+                    webhook_logger.info(f"Received text from {sender_psid}: {text} 📝")
+                    reply_type, reply_content = handle_message(sender_psid, text, bot_request, context=context)
+                    if reply_type == "image":
+                        webhook_logger.info(f"Sending image with attachment_id: {reply_content} to {sender_psid} 📷")
+                        send_image_by_attachment_id(sender_psid, reply_content, bot_request.page_access_token)
+                    else:
+                        webhook_logger.info(f"Sending text to {sender_psid}: {reply_content} 💬")
+                        send_text_fb(sender_psid, reply_content, bot_request.page_access_token)
+    webhook_logger.info("Webhook event processing complete! ✅")
     return "EVENT_RECEIVED", 200
 
 if __name__ == '__main__':
