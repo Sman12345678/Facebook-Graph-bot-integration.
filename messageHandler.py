@@ -9,7 +9,7 @@ intent_clf = joblib.load('intent_model.pkl')
 
 BACKEND_INSTRUCTION = """You are a professional business chatbot.
 Always help customers, answer queries, recognize products in images, manage cart/checkout, and speak in friendly business English.
-The available products with images are:
+The available products are:
 {catalog}
 If the customer requests a product image, reply with the file name (no extension) exactly as in the catalog.
 If a user asks for a product, check your catalog. If it exists, reply with {{"product_image": product_name}}, where product_name is the matching product.
@@ -38,7 +38,7 @@ def classify_intent(text):
 
 def send_text_fb(recipient_psid, text, page_access_token):
     import requests
-    api_url = f"https://graph.facebook.com/v19.0/me/messages"
+    api_url = f"https://graph.facebook.com/v22.0/me/messages"
     params = {'access_token': page_access_token}
     data = {
         'recipient': {'id': recipient_psid},
@@ -49,7 +49,7 @@ def send_text_fb(recipient_psid, text, page_access_token):
 
 def upload_image_to_facebook(image_path, page_access_token):
     import requests
-    api_url = f"https://graph.facebook.com/v19.0/me/message_attachments"
+    api_url = f"https://graph.facebook.com/v22.0/me/message_attachments"
     params = {"access_token": page_access_token}
     with open(image_path, "rb") as f:
         files = {'filedata': f}
@@ -66,7 +66,7 @@ def upload_image_to_facebook(image_path, page_access_token):
 
 def send_image_by_attachment_id(recipient_psid, attachment_id, page_access_token):
     import requests
-    api_url = f"https://graph.facebook.com/v19.0/me/messages"
+    api_url = f"https://graph.facebook.com/v22.0/me/messages"
     params = {"access_token": page_access_token}
     headers = {"Content-Type": "application/json"}
     data = {
@@ -87,7 +87,6 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
     if context is None:
         context = {}
     history = get_history(bot_request.id)
-    # Gather product names for catalog and file lookup
     product_images = ProductImage.query.filter_by(bot_request_id=bot_request.id).all()
     product_list = [img.product_name for img in product_images]
     catalog = "\n".join([f"{img.product_name}: {img.url}" for img in product_images])
@@ -101,38 +100,45 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
         except Exception as e:
             return ("text", "Error displaying your cart.")
 
-    # Order flow (multi-turn)
-    if not image and context.get('flow') == 'order':
-        if context['step'] == 1:
-            context['product'] = message
+    # --- Simplified Order Flow ---
+    if context.get('flow') == 'order':
+        step = context.get('step', 1)
+        if message.strip().lower() == "cancel":
+            context.clear()
+            return ("text", "Your order has been cancelled.")
+        if step == 1:
+            context['product'] = message.strip()
             context['step'] = 2
             return ("text", "How many units do you want to order?")
-        elif context['step'] == 2:
-            context['quantity'] = message
+        elif step == 2:
+            context['quantity'] = message.strip()
             context['step'] = 3
             return ("text", "Please provide your name.")
-        elif context['step'] == 3:
-            context['customer_name'] = message
+        elif step == 3:
+            context['customer_name'] = message.strip()
             context['step'] = 4
             return ("text", "Your address?")
-        elif context['step'] == 4:
-            context['address'] = message
+        elif step == 4:
+            context['address'] = message.strip()
             context['step'] = 5
             return ("text", "Your contact (phone/email)?")
-        elif context['step'] == 5:
-            context['contact'] = message
-            summary = (f"Order summary:\nProduct: {context['product']}\n"
-                       f"Quantity: {context['quantity']}\nName: {context['customer_name']}\n"
-                       f"Address: {context['address']}\nContact: {context['contact']}\n"
-                       "Reply 'confirm' to place your order.")
+        elif step == 5:
+            context['contact'] = message.strip()
             context['step'] = 6
+            summary = (f"Order summary:\n"
+                       f"Product: {context['product']}\n"
+                       f"Quantity: {context['quantity']}\n"
+                       f"Name: {context['customer_name']}\n"
+                       f"Address: {context['address']}\n"
+                       f"Contact: {context['contact']}\n"
+                       "Reply 'confirm' to place your order.")
             return ("text", summary)
-        elif context['step'] == 6 and message.strip().lower() == "confirm":
+        elif step == 6 and message.strip().lower() == "confirm":
             order = Order(
                 bot_request_id=bot_request.id,
                 customer_psid=sender_psid,
                 product=context['product'],
-                quantity=int(context['quantity']),
+                quantity=context['quantity'],
                 customer_name=context['customer_name'],
                 address=context['address'],
                 contact=context['contact'],
@@ -148,11 +154,10 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
     if not image and intent == "order":
         context['flow'] = 'order'
         context['step'] = 1
-        return ("text", "What product would you like to order?")
+        return ("text", "What product would you like to order? (Type 'cancel' to exit)")
 
     # ---------- IMAGE RECOGNITION LOGIC ----------
     if image:
-        # Prepare special instruction for Gemini with catalog
         catalog_instruction = (
             "You are a product recognition assistant. "
             "You will be shown an image and a list of available products. "
@@ -171,7 +176,6 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
             image=image
         )
         log_message(bot_request.id, sender_psid, "[image sent]", "user")
-        # Find if Gemini replied with a known product name
         matched_product = None
         for name in product_list:
             if name.lower() in reply.lower():
@@ -203,7 +207,6 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
     )
     log_message(bot_request.id, sender_psid, message, "user")
 
-    # Check for {"product_image": "ProductName"} pattern in reply
     match = re.search(r'{\s*"product_image"\s*:\s*"([^"]+)"\s*}', reply)
     if match:
         product_name = match.group(1)
@@ -220,7 +223,6 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
         else:
             log_message(bot_request.id, sender_psid, f"Product image not found: {product_name}", "bot")
             return ("text", f"Sorry, I couldn't find an image for {product_name}.")
-    # If not product image, just return text
     log_message(bot_request.id, sender_psid, reply, "bot")
     return ("text", reply)
 def send_order_email_to_owner(bot_request, order):
