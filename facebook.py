@@ -21,3 +21,12 @@ def get_pages(access_token):
     resp = requests.get(url, params={"access_token": access_token})
     resp.raise_for_status()
     return resp.json().get("data", [])
+
+def subscribe_page(page_id, page_access_token):
+    url = f"https://graph.facebook.com/v22.0/{page_id}/subscribed_apps"
+    params = {
+        "access_token": page_access_token,
+        "subscribed_fields": "messages,messaging_postbacks"
+    }
+    response = requests.post(url, params=params)
+    return response.json()
