@@ -83,6 +83,21 @@ def send_image_by_attachment_id(recipient_psid, attachment_id, page_access_token
     response = requests.post(api_url, params=params, headers=headers, json=data)
     print("send_image_by_attachment_id response:", response.status_code, response.text)
 
+def get_user_context(sender_psid):
+    from models import UserContext, db
+    ctx = UserContext.query.filter_by(sender_psid=sender_psid).first()
+    return ctx.context if ctx else {}
+
+def save_user_context(sender_psid, context):
+    from models import UserContext, db
+    ctx = UserContext.query.filter_by(sender_psid=sender_psid).first()
+    if ctx:
+        ctx.context = context
+    else:
+        ctx = UserContext(sender_psid=sender_psid, context=context)
+        db.session.add(ctx)
+    db.session.commit()
+
 def handle_message(sender_psid, message, bot_request, image=None, context=None):
     if context is None:
         context = {}
