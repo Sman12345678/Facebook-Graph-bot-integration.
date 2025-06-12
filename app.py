@@ -4,7 +4,7 @@ from flask import Flask, render_template, request, session, redirect, url_for, f
 from flask_sqlalchemy import SQLAlchemy
 from models import db, User, BotRequest, ProductImage, Order
 from auth import auth_bp, login_required, admin_login_required
-from facebook import get_pages, exchange_code_for_token
+from facebook import get_pages, exchange_code_for_token, subscribe_page
 from messageHandler import handle_message, send_text_fb, send_image_by_attachment_id
 from werkzeug.utils import secure_filename
 from autopost import start_autopost
@@ -106,6 +106,13 @@ def select_page():
         session['selected_page_name'] = selected_page['name']
         session['selected_page_access_token'] = selected_page['access_token']
         webhook_logger.info(f"Session updated with page ID: {selected_page['id']}, name: {selected_page['name']}, access_token: {mask_token(selected_page['access_token'])}")
+        try:
+            result = subscribe_page(selected_page['id'], selected_page['access_token'])
+            webhook_logger.info(f"Subscribed page {selected_page['id']} to webhook: {result}")
+        except Exception as e:
+            webhook_logger.error(f"Failed to subscribe page to webhook: {e}")
+            flash("Failed to subscribe page to webhook. Please contact support.", "danger")
+            return redirect(url_for('select_page'))
         return redirect(url_for('system_instruction'))
     return render_template('pages.html', pages=pages)
 
