@@ -1,6 +1,9 @@
+import os
+import re
+from io import BytesIO
 from gemini_handler import get_gemini_response
 from models import db, MessageLog, ProductImage, BotRequest, Order
-import joblib, os
+import joblib
 
 intent_clf = joblib.load('intent_model.pkl')
 
@@ -9,6 +12,7 @@ Always help customers, answer queries, recognize products in images, manage cart
 The available products with images are:
 {catalog}
 If the customer requests a product image, reply with the file name (no extension) exactly as in the catalog.
+If a user asks for a product, check your catalog. If it exists, reply with {{"product_image": product_name}}, where product_name is the matching product.
 """
 
 def log_message(bot_request_id, sender_psid, message, message_type):
@@ -32,46 +36,89 @@ def get_product_context(bot_request):
 def classify_intent(text):
     return intent_clf.predict([text])[0]
 
+def send_text_fb(recipient_psid, text, page_access_token):
+    import requests
+    api_url = f"https://graph.facebook.com/v19.0/me/messages"
+    params = {'access_token': page_access_token}
+    data = {
+        'recipient': {'id': recipient_psid},
+        'message': {'text': text}
+    }
+    response = requests.post(api_url, params=params, json=data)
+    print("send_text_fb response:", response.status_code, response.text)
+
+def upload_image_to_facebook(image_path, page_access_token):
+    import requests
+    api_url = f"https://graph.facebook.com/v19.0/me/message_attachments"
+    params = {"access_token": page_access_token}
+    with open(image_path, "rb") as f:
+        files = {'filedata': f}
+        data = {
+            'message': '{"attachment":{"type":"image", "payload":{}}}'
+        }
+        response = requests.post(api_url, params=params, data=data, files=files)
+    if response.status_code == 200:
+        result = response.json()
+        return result["attachment_id"]
+    else:
+        print("Failed to upload image:", response.text)
+        return None
+
+def send_image_by_attachment_id(recipient_psid, attachment_id, page_access_token):
+    import requests
+    api_url = f"https://graph.facebook.com/v19.0/me/messages"
+    params = {"access_token": page_access_token}
+    headers = {"Content-Type": "application/json"}
+    data = {
+        "recipient": {"id": recipient_psid},
+        "message": {
+            "attachment": {
+                "type": "image",
+                "payload": {
+                    "attachment_id": attachment_id
+                }
+            }
+        }
+    }
+    response = requests.post(api_url, params=params, headers=headers, json=data)
+    print("send_image_by_attachment_id response:", response.status_code, response.text)
+
 def handle_message(sender_psid, message, bot_request, image=None, context=None):
     if context is None:
         context = {}
     history = get_history(bot_request.id)
-    product_list = get_product_context(bot_request)
-    catalog = "\n".join(product_list)
+    # Gather product names for catalog and file lookup
+    product_images = ProductImage.query.filter_by(bot_request_id=bot_request.id).all()
+    product_list = [img.product_name for img in product_images]
+    catalog = "\n".join([f"{img.product_name}: {img.url}" for img in product_images])
     intent = classify_intent(message)
-    # Example command support
+
+    # /viewcart command
     if message.strip().lower() == "/viewcart":
         try:
             from CMD.view_cart import execute
-            return execute(sender_psid, bot_request.id)
+            return ("text", execute(sender_psid, bot_request.id))
         except Exception as e:
-            return "Error displaying your cart."
-    # handle product image request
-    if intent == "product_image":
-        for prod_img in bot_request.product_images:
-            if prod_img.product_name.lower() in message.lower():
-                send_image_fb(sender_psid, prod_img.url, bot_request.page_access_token)
-                log_message(bot_request.id, sender_psid, f"Sent image: {prod_img.product_name}", "bot")
-                return f"Here is the image of {prod_img.product_name}"
-        return "Sorry, I couldn't find that product image."
-    # order flow (multi-turn)
+            return ("text", "Error displaying your cart.")
+
+    # Order flow (multi-turn)
     if context.get('flow') == 'order':
         if context['step'] == 1:
             context['product'] = message
             context['step'] = 2
-            return "How many units do you want to order?"
+            return ("text", "How many units do you want to order?")
         elif context['step'] == 2:
             context['quantity'] = message
             context['step'] = 3
-            return "Please provide your name."
+            return ("text", "Please provide your name.")
         elif context['step'] == 3:
             context['customer_name'] = message
             context['step'] = 4
-            return "Your address?"
+            return ("text", "Your address?")
         elif context['step'] == 4:
             context['address'] = message
             context['step'] = 5
-            return "Your contact (phone/email)?"
+            return ("text", "Your contact (phone/email)?")
         elif context['step'] == 5:
             context['contact'] = message
             summary = (f"Order summary:\nProduct: {context['product']}\n"
@@ -79,7 +126,7 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
                        f"Address: {context['address']}\nContact: {context['contact']}\n"
                        "Reply 'confirm' to place your order.")
             context['step'] = 6
-            return summary
+            return ("text", summary)
         elif context['step'] == 6 and message.strip().lower() == "confirm":
             order = Order(
                 bot_request_id=bot_request.id,
@@ -95,13 +142,15 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
             db.session.commit()
             send_order_email_to_owner(bot_request, order)
             context.clear()
-            return f"✅ Your order (ID: {order.id}) has been placed! We will contact you soon."
+            return ("text", f"✅ Your order (ID: {order.id}) has been placed! We will contact you soon.")
+
     # order detection (start flow)
     if intent == "order":
         context['flow'] = 'order'
         context['step'] = 1
-        return "What product would you like to order?"
-    # fallback to Gemini
+        return ("text", "What product would you like to order?")
+
+    # fallback to Gemini (LLM)
     reply = get_gemini_response(
         user_message=message,
         system_instruction=bot_request.system_instruction,
@@ -111,22 +160,27 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
         image=image
     )
     log_message(bot_request.id, sender_psid, message, "user")
-    log_message(bot_request.id, sender_psid, reply, "bot")
-    return reply
 
-def send_image_fb(recipient_psid, image_url, page_access_token):
-    params = {'access_token': page_access_token}
-    data = {
-        'recipient': {'id': recipient_psid},
-        'message': {
-            'attachment': {
-                'type': 'image',
-                'payload': {'url': image_url, 'is_reusable': True}
-            }
-        }
-    }
-    import requests
-    requests.post('https://graph.facebook.com/v22.0/me/messages', params=params, json=data)
+    # Check for {"product_image": "ProductName"} pattern in reply
+    match = re.search(r'{\s*"product_image"\s*:\s*"([^"]+)"\s*}', reply)
+    if match:
+        product_name = match.group(1)
+        product = next((img for img in product_images if img.product_name == product_name), None)
+        if product:
+            image_path = os.path.join("static/uploads", product.filename)
+            attachment_id = upload_image_to_facebook(image_path, bot_request.page_access_token)
+            if attachment_id:
+                log_message(bot_request.id, sender_psid, f"Sent image: {product_name}", "bot")
+                return ("image", attachment_id)
+            else:
+                log_message(bot_request.id, sender_psid, f"Failed to upload image: {product_name}", "bot")
+                return ("text", f"Sorry, there was an error sending the image for {product_name}.")
+        else:
+            log_message(bot_request.id, sender_psid, f"Product image not found: {product_name}", "bot")
+            return ("text", f"Sorry, I couldn't find an image for {product_name}.")
+    # If not product image, just return text
+    log_message(bot_request.id, sender_psid, reply, "bot")
+    return ("text", reply)
 
 def send_order_email_to_owner(bot_request, order):
     import smtplib
@@ -148,5 +202,8 @@ def send_order_email_to_owner(bot_request, order):
     msg['Subject'] = subject
     msg['From'] = "noreply@yourdomain.com"
     msg['To'] = owner_email
-    with smtplib.SMTP('localhost') as s:
-        s.sendmail(msg['From'], [owner_email], msg.as_string())
+    try:
+        with smtplib.SMTP('localhost') as s:
+            s.sendmail(msg['From'], [owner_email], msg.as_string())
+    except Exception as e:
+        print(f"Error sending order email: {e}")
