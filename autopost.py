@@ -1,5 +1,5 @@
 import threading, time, random
-from messageHandler import send_image_fb
+from messageHandler import send_text_fb
 
 AUTOPOST_MESSAGES = [
     "Welcome to our store! 🎉",
@@ -29,7 +29,7 @@ def start_autopost(page_id, page_access_token):
     def autopost_loop():
         while True:
             msg = random.choice(AUTOPOST_MESSAGES)
-            send_image_fb(page_id, msg, page_access_token)
+            send_text_fb(page_id, msg, page_access_token)
             time.sleep(86400)  # 24 hours
     t = threading.Thread(target=autopost_loop, daemon=True)
     t.start()
