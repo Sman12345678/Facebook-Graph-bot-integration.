@@ -91,10 +91,10 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
     product_images = ProductImage.query.filter_by(bot_request_id=bot_request.id).all()
     product_list = [img.product_name for img in product_images]
     catalog = "\n".join([f"{img.product_name}: {img.url}" for img in product_images])
-    intent = classify_intent(message)
+    intent = classify_intent(message) if not image else None
 
     # /viewcart command
-    if message.strip().lower() == "/viewcart":
+    if not image and message.strip().lower() == "/viewcart":
         try:
             from CMD.view_cart import execute
             return ("text", execute(sender_psid, bot_request.id))
@@ -102,7 +102,7 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
             return ("text", "Error displaying your cart.")
 
     # Order flow (multi-turn)
-    if context.get('flow') == 'order':
+    if not image and context.get('flow') == 'order':
         if context['step'] == 1:
             context['product'] = message
             context['step'] = 2
@@ -145,19 +145,61 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
             return ("text", f"✅ Your order (ID: {order.id}) has been placed! We will contact you soon.")
 
     # order detection (start flow)
-    if intent == "order":
+    if not image and intent == "order":
         context['flow'] = 'order'
         context['step'] = 1
         return ("text", "What product would you like to order?")
 
-    # fallback to Gemini (LLM)
+    # ---------- IMAGE RECOGNITION LOGIC ----------
+    if image:
+        # Prepare special instruction for Gemini with catalog
+        catalog_instruction = (
+            "You are a product recognition assistant. "
+            "You will be shown an image and a list of available products. "
+            "Available products:\n" +
+            "\n".join(product_list) +
+            "\nIf you see a product in the image that matches or is similar to something in the catalog, " +
+            "respond with the product name exactly as in the list. " +
+            "If none match, say 'No catalog product recognized.'"
+        )
+        reply = get_gemini_response(
+            user_message="Analyze the sent image and check if it contains any product from the catalog.",
+            system_instruction=catalog_instruction,
+            product_context=catalog,
+            backend_instruction=BACKEND_INSTRUCTION.format(catalog=catalog),
+            history=history,
+            image=image
+        )
+        log_message(bot_request.id, sender_psid, "[image sent]", "user")
+        # Find if Gemini replied with a known product name
+        matched_product = None
+        for name in product_list:
+            if name.lower() in reply.lower():
+                matched_product = name
+                break
+        if matched_product:
+            product = next((img for img in product_images if img.product_name == matched_product), None)
+            if product:
+                image_path = os.path.join("static/uploads", product.filename)
+                attachment_id = upload_image_to_facebook(image_path, bot_request.page_access_token)
+                if attachment_id:
+                    log_message(bot_request.id, sender_psid, f"Sent image: {matched_product}", "bot")
+                    return ("image", attachment_id)
+                else:
+                    log_message(bot_request.id, sender_psid, f"Failed to upload image: {matched_product}", "bot")
+                    return ("text", f"We have '{matched_product}' in our catalog, but couldn't send the image right now.")
+        else:
+            log_message(bot_request.id, sender_psid, "No catalog product recognized in image.", "bot")
+            return ("text", "We couldn't find a matching catalog product in your image, but if you need something specific, let us know!")
+
+    # ---------- TEXT & fallback: Gemini (LLM) ----------
     reply = get_gemini_response(
         user_message=message,
         system_instruction=bot_request.system_instruction,
         product_context=catalog,
         backend_instruction=BACKEND_INSTRUCTION.format(catalog=catalog),
         history=history,
-        image=image
+        image=None
     )
     log_message(bot_request.id, sender_psid, message, "user")
 
@@ -181,7 +223,6 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
     # If not product image, just return text
     log_message(bot_request.id, sender_psid, reply, "bot")
     return ("text", reply)
-
 def send_order_email_to_owner(bot_request, order):
     import smtplib
     from email.mime.text import MIMEText
