@@ -5,7 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from models import db, User, BotRequest, ProductImage, Order
 from auth import auth_bp, login_required, admin_login_required
 from facebook import get_pages, exchange_code_for_token, subscribe_page
-from messageHandler import handle_message, send_text_fb, send_image_by_attachment_id
+from messageHandler import handle_message, send_text_fb, send_image_by_attachment_id , get_user_context , save_user_context
 from werkzeug.utils import secure_filename
 from autopost import start_autopost
 
