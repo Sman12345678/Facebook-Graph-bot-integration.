@@ -25,6 +25,27 @@ def logout():
     flash("Logged out", "info")
     return redirect(url_for('auth.login'))
 
+@auth_bp.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        username = request.form['username'].strip()
+        email = request.form['email'].strip().lower()
+        password = request.form['password']
+        # Check for existing user
+        if User.query.filter((User.username == username) | (User.email == email)).first():
+            flash('Username or email already in use.', 'danger')
+            return render_template('signup.html')
+        if not username or not email or not password:
+            flash("Please fill out all fields.", "danger")
+            return render_template('signup.html')
+        user = User(username=username, email=email)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        flash("Account created! Please log in.", "success")
+        return redirect(url_for('auth.login'))
+    return render_template('signup.html')
+
 def admin_login_required(f):
     from functools import wraps
     def wrap(*args, **kwargs):
