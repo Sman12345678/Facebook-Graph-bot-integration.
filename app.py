@@ -118,8 +118,9 @@ def my_bots():
 def admin_panel():
     pending = BotRequest.query.filter_by(approved=False, rejected=False).all()
     approved = BotRequest.query.filter_by(approved=True).all()
+    rejected = BotRequest.query.filter_by(rejected=True).all()
     orders = Order.query.order_by(Order.created_at.desc()).all()
-    return render_template('admin.html', pending=pending, approved=approved, orders=orders)
+    return render_template('admin.html', pending=pending, approved=approved, rejected=rejected, orders=orders)
 
 @app.route('/admin/approve/<int:bot_request_id>')
 @admin_login_required
