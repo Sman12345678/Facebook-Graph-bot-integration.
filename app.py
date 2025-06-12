@@ -245,7 +245,9 @@ def webhook():
                                 send_text_fb(sender_psid, reply_content, bot_request.page_access_token)
                 elif text:
                     webhook_logger.info(f"Received text from {sender_psid}: {text} 📝")
+                    context = get_user_context(sender_psid)
                     reply_type, reply_content = handle_message(sender_psid, text, bot_request, context=context)
+                    save_user_context(sender_psid, context)
                     if reply_type == "image":
                         webhook_logger.info(f"Sending image with attachment_id: {reply_content} to {sender_psid} 📷 using page_access_token={mask_token(bot_request.page_access_token)}")
                         send_image_by_attachment_id(sender_psid, reply_content, bot_request.page_access_token)
