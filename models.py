@@ -57,3 +57,8 @@ class Order(db.Model):
     contact = db.Column(db.String(100))
     status = db.Column(db.String(32), default="pending")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class UserContext(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sender_psid = db.Column(db.String, unique=True, nullable=False)
+    context = db.Column(db.PickleType, nullable=False)
