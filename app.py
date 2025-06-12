@@ -68,10 +68,15 @@ def dashboard():
 @app.route('/facebook/login')
 @login_required
 def facebook_login():
-    fb_oauth_url = f"https://www.facebook.com/v22.0/dialog/oauth?client_id={os.environ.get('FB_APP_ID')}&redirect_uri={os.environ.get('FB_REDIRECT_URI')}&scope=pages_show_list,pages_messaging"
+    fb_oauth_url = (
+        f"https://www.facebook.com/v22.0/dialog/oauth"
+        f"?client_id={os.environ.get('FB_APP_ID')}"
+        f"&redirect_uri={os.environ.get('FB_REDIRECT_URI')}"
+        f"&scope=pages_show_list,pages_messaging,pages_read_engagement,pages_manage_metadata"
+    )
     webhook_logger.info(f"Facebook OAuth URL generated: {fb_oauth_url}")
     return redirect(fb_oauth_url)
-
+    
 @app.route('/facebook/callback')
 @login_required
 def facebook_callback():
