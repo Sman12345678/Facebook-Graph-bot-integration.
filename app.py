@@ -173,7 +173,7 @@ def admin_panel():
 @app.route('/admin/approve/<int:bot_request_id>')
 @admin_login_required
 def approve_bot(bot_request_id):
-    bot = BotRequest.query.get(bot_request_id)
+    bot = db.session.get(BotRequest, bot_request_id)
     bot.approved = True
     db.session.commit()
     webhook_logger.info(f"BotRequest approved: {bot_request_id} for page {bot.fb_page_id} with token {mask_token(bot.page_access_token)}")
