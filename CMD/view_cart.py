@@ -1,8 +1,14 @@
-from models import MessageLog
+from models import CartItem
 
 def execute(sender_psid, bot_request_id):
-    logs = MessageLog.query.filter_by(bot_request_id=bot_request_id, sender_psid=sender_psid).order_by(MessageLog.timestamp.desc()).limit(20)
-    items = [l.message for l in logs if "product" in l.message.lower()]
+    items = CartItem.query.filter_by(sender_psid=sender_psid, bot_request_id=bot_request_id).all()
+
     if not items:
-        return "Your cart is empty."
-    return "Items in your cart:\n" + "\n".join(items)
+        return "🛒 Your cart is empty. Start shopping by typing a product name!"
+
+    response = "🛍️ **Your Shopping Cart:**\n\n"
+    for item in items:
+        response += f"• 📦 *{item.product_name}* | {item.quantity} units\n"
+
+   
+    return response
