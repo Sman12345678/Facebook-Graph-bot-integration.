@@ -62,3 +62,12 @@ class UserContext(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     sender_psid = db.Column(db.String, unique=True, nullable=False)
     context = db.Column(db.PickleType, nullable=False)
+
+class CartItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sender_psid = db.Column(db.String(128))
+    bot_request_id = db.Column(db.Integer, db.ForeignKey('bot_request.id'))
+    product_name = db.Column(db.String(255))
+    quantity = db.Column(db.Integer, default=1)
+    added_at = db.Column(db.DateTime, default=datetime.utcnow)
+
