@@ -2,7 +2,7 @@ import os
 import logging
 from flask import Flask, render_template, request, session, redirect, url_for, flash, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
-from models import db, User, BotRequest, ProductImage, Order
+from models import db, User, BotRequest, ProductImage, Order, CartItem
 from auth import auth_bp, login_required, admin_login_required
 from facebook import get_pages, exchange_code_for_token, subscribe_page
 from messageHandler import handle_message, send_text_fb, send_image_by_attachment_id , get_user_context , save_user_context
