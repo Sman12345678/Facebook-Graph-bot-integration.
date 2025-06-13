@@ -4,7 +4,7 @@ from io import BytesIO
 from gemini_handler import get_gemini_response
 from models import db, MessageLog, ProductImage, BotRequest, Order, CartItem
 import joblib
-
+from CMD import view_cart
 intent_clf = joblib.load('intent_model.pkl')
 
 BACKEND_INSTRUCTION = """You are a professional business chatbot.
@@ -114,7 +114,7 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
         # /viewcart command
         if not image and message.strip().lower() == "/viewcart":
             try:
-                return ("text", view_cart(sender_psid, bot_request.id))
+                return ("text", view_cart.execute(sender_psid, bot_request.id))
             except Exception:
                 logging.exception("Error while viewing cart")
                 return ("text", "Error displaying your cart.")
