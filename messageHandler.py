@@ -9,10 +9,18 @@ intent_clf = joblib.load('intent_model.pkl')
 
 BACKEND_INSTRUCTION = """You are a professional business chatbot.
 Always help customers, answer queries, recognize products in images, manage cart/checkout, and speak in friendly business English.
-The available products are:
+The available products in your catalog are:
+****
 {catalog}
-If the customer requests a product image, reply with the file name (no extension) exactly as in the catalog.
-If a user asks for a product, check your catalog. If it exists, reply with {{"product_image": product_name}}, where product_name is the matching product.
+****
+If a user asks for a product image, check your catalog. If it exists, reply with just {{"product_image": product name}}, where product name is the matching product.
+******
+If the user wants to buy/order any product, reply in the format:  
+{{order: product name}}
+
+Only reply with this format when the user's message clearly contains the product name.  
+If it’s unclear or missing, ask the user to provide the product name first.
+******
 """
 
 def log_message(bot_request_id, sender_psid, message, message_type):
@@ -111,21 +119,19 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
         catalog = "\n".join(product_list)
         intent = classify_intent(message) if not image else None
 
-        # /viewcart command
         if not image and message.strip().lower() == "/viewcart":
             try:
                 return ("text", view_cart.execute(sender_psid, bot_request.id))
             except Exception:
                 logging.exception("Error while viewing cart")
-                return ("text", "Error displaying your cart.")
+                return ("text", "⚠️ We’re having trouble loading your cart right now. Please try again later.")
 
-        # Order flow
         if context.get('flow') == 'order':
             step = context.get('step', 1)
 
             if message.strip().lower() == "cancel":
                 context.clear()
-                return ("text", "Your order has been cancelled.")
+                return ("text", "❌ Your order has been cancelled.")
 
             if step == 1:
                 context['product'] = message.strip()
@@ -150,34 +156,34 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
                 db.session.commit()
 
                 context['step'] = 2
-                return ("text", "How many units do you want to order?")
+                return ("text", "📦 How many units would you like to order?")
 
             elif step == 2:
                 context['quantity'] = message.strip()
                 context['step'] = 3
-                return ("text", "Please provide your name.")
+                return ("text", "🧑 May I have your name, please?")
 
             elif step == 3:
                 context['customer_name'] = message.strip()
                 context['step'] = 4
-                return ("text", "Your address?")
+                return ("text", "📍 Kindly share your delivery address.")
 
             elif step == 4:
                 context['address'] = message.strip()
                 context['step'] = 5
-                return ("text", "Your contact (phone/email)?")
+                return ("text", "📞 Please provide the best contact info Phone number or email to reach you?")
 
             elif step == 5:
                 context['contact'] = message.strip()
                 context['step'] = 6
                 summary = (
-                    f"Order summary:\n"
+                    f"🧾 Order summary:\n"
                     f"Product: {context['product']}\n"
                     f"Quantity: {context['quantity']}\n"
                     f"Name: {context['customer_name']}\n"
                     f"Address: {context['address']}\n"
                     f"Contact: {context['contact']}\n"
-                    "Reply 'confirm' to place your order."
+                    "✉️ Reply 'confirm' to place your order."
                 )
                 return ("text", summary)
 
@@ -197,15 +203,13 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
 
                 send_order_email_to_owner(bot_request, order)
                 context.clear()
-                return ("text", f"✅ Your order (ID: {order.id}) has been placed! We will contact you soon.")
+                return ("text", f"🎉✅ Your order (ID: {order.id}) has been placed successfully! We’ll contact you soon. 📞")
 
-        # Detect start of order
         if not image and intent == "order":
             context['flow'] = 'order'
             context['step'] = 1
-            return ("text", "What product would you like to order? (Type 'cancel' to exit)")
+            return ("text", "🛍️ What product would you like to order? (Type 'cancel' to exit)")
 
-        # ---------- IMAGE RECOGNITION LOGIC ----------
         if image:
             catalog_instruction = (
                 "You are a product recognition assistant. "
@@ -243,41 +247,76 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
                         return ("text", f"We have '{matched_product}' in our catalog, but couldn't send the image right now.")
             else:
                 log_message(bot_request.id, sender_psid, "No catalog product recognized in image.", "bot")
-                return ("text", "We couldn't find a matching catalog product in your image, but if you need something specific, let us know!")
+                return ("text", "🤔 We couldn't recognize any product from our catalog in the image. Please try again or send another photo.")
 
-        # ---------- TEXT & fallback: Gemini (LLM) ----------
-        reply = get_gemini_response(
-            user_message=message,
-            system_instruction=bot_request.system_instruction,
-            product_context=catalog,
-            backend_instruction=BACKEND_INSTRUCTION.format(catalog=catalog),
-            history=history,
-            image=None
-        )
-        log_message(bot_request.id, sender_psid, message, "user")
+        try:
+            reply = get_gemini_response(
+                user_message=message,
+                system_instruction=bot_request.system_instruction,
+                product_context=catalog,
+                backend_instruction=BACKEND_INSTRUCTION.format(catalog=catalog),
+                history=history,
+                image=None
+            )
+            log_message(bot_request.id, sender_psid, message, "user")
 
-        match = re.search(r'{\s*"product_image"\s*:\s*"([^"]+)"\s*}', reply)
-        if match:
-            product_name = match.group(1)
-            product = next((img for img in product_images if img.product_name == product_name), None)
-            if product:
-                image_path = os.path.join("static/uploads", product.filename)
-                attachment_id = upload_image_to_facebook(image_path, bot_request.page_access_token)
-                if attachment_id:
-                    log_message(bot_request.id, sender_psid, f"Sent image: {product_name}", "bot")
-                    return ("image", attachment_id)
+            match = re.search(r'{\s*"product_image"\s*:\s*"([^"]+)"\s*}', reply)
+            if match:
+                product_name = match.group(1)
+                product = next((img for img in product_images if img.product_name == product_name), None)
+                if product:
+                    image_path = os.path.join("static/uploads", product.filename)
+                    attachment_id = upload_image_to_facebook(image_path, bot_request.page_access_token)
+                    if attachment_id:
+                        log_message(bot_request.id, sender_psid, f"Sent image: {product_name}", "bot")
+                        return ("image", attachment_id)
+                    else:
+                        log_message(bot_request.id, sender_psid, f"Failed to upload image: {product_name}", "bot")
+                        return ("text", f"😓 Sorry, there was an error sending the image for {product_name}.")
                 else:
-                    log_message(bot_request.id, sender_psid, f"Failed to upload image: {product_name}", "bot")
-                    return ("text", f"Sorry, there was an error sending the image for {product_name}.")
-            else:
-                log_message(bot_request.id, sender_psid, f"Product image not found: {product_name}", "bot")
-                return ("text", f"Sorry, I couldn't find an image for {product_name}.")
-        log_message(bot_request.id, sender_psid, reply, "bot")
-        return ("text", reply)
+                    log_message(bot_request.id, sender_psid, f"Product image not found: {product_name}", "bot")
+                    return ("text", f"🔍 Sorry, I couldn't find an image for {product_name}.")
+
+            order_match = re.search(r'{\s*order\s*:\s*([^}]+)\s*}', reply.lower())
+            if order_match:
+                product = order_match.group(1).strip()
+                context['flow'] = 'order'
+                context['step'] = 2
+                context['product'] = product
+
+                existing = CartItem.query.filter_by(
+                    sender_psid=sender_psid,
+                    bot_request_id=bot_request.id,
+                    product_name=product
+                ).first()
+
+                if existing:
+                    existing.quantity += 1
+                else:
+                    cart_item = CartItem(
+                        sender_psid=sender_psid,
+                        bot_request_id=bot_request.id,
+                        product_name=product,
+                        quantity=1
+                    )
+                    db.session.add(cart_item)
+                db.session.commit()
+
+                log_message(bot_request.id, sender_psid, f"Auto-detected order for '{product}'", "bot")
+                return ("text", f"🛒 How many units of '{product}' would you like to order?")
+
+            log_message(bot_request.id, sender_psid, reply, "bot")
+            return ("text", reply)
+
+        except Exception as e:
+            logging.exception(f"Exception occurred in inner LLM handler: {e}")
+            return ("text", "🙏 Sorry, we're currently unavailable to process your request. Our team will get back to you shortly. Thank you for your patience! 💬")
 
     except Exception as e:
-        logging.exception(f"Exception occurred in handle_message{e}")
-        return ("text", "⚠️ An error occurred while processing your message. Please try again later.")
+        logging.exception(f"Exception occurred in handle_message: {e}")
+        return ("text", "🙏 Sorry, we're currently unavailable to process your request. Our team will get back to you shortly. Thank you for your patience! 💬")
+
+
 
 def send_order_email_to_owner(bot_request, order):
     import smtplib
