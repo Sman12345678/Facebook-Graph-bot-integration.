@@ -2,7 +2,7 @@ import os
 import re
 from io import BytesIO
 from gemini_handler import get_gemini_response
-from models import db, MessageLog, ProductImage, BotRequest, Order
+from models import db, MessageLog, ProductImage, BotRequest, Order, CartItem
 import joblib
 
 intent_clf = joblib.load('intent_model.pkl')
@@ -101,53 +101,83 @@ def save_user_context(sender_psid, context):
 def handle_message(sender_psid, message, bot_request, image=None, context=None):
     if context is None:
         context = {}
+    
     history = get_history(bot_request.id)
     product_images = ProductImage.query.filter_by(bot_request_id=bot_request.id).all()
     product_list = [img.product_name for img in product_images]
-    catalog = "\n".join([img.product_name for img in product_images])
+    catalog = "\n".join(product_list)
     intent = classify_intent(message) if not image else None
 
     # /viewcart command
     if not image and message.strip().lower() == "/viewcart":
         try:
-            from CMD.view_cart import execute
-            return ("text", execute(sender_psid, bot_request.id))
-        except Exception as e:
+            return ("text", view_cart(sender_psid, bot_request.id))
+        except Exception:
             return ("text", "Error displaying your cart.")
 
-    # --- Simplified Order Flow ---
+    # Order flow
     if context.get('flow') == 'order':
         step = context.get('step', 1)
+
         if message.strip().lower() == "cancel":
             context.clear()
             return ("text", "Your order has been cancelled.")
+
         if step == 1:
             context['product'] = message.strip()
+
+            # ✅ Add to CartItem (only product name)
+            existing = CartItem.query.filter_by(
+                sender_psid=sender_psid,
+                bot_request_id=bot_request.id,
+                product_name=context['product']
+            ).first()
+
+            if existing:
+                existing.quantity += 1
+            else:
+                cart_item = CartItem(
+                    sender_psid=sender_psid,
+                    bot_request_id=bot_request.id,
+                    product_name=context['product'],
+                    quantity=1
+                )
+                db.session.add(cart_item)
+
+            db.session.commit()
+
             context['step'] = 2
             return ("text", "How many units do you want to order?")
+
         elif step == 2:
             context['quantity'] = message.strip()
             context['step'] = 3
             return ("text", "Please provide your name.")
+
         elif step == 3:
             context['customer_name'] = message.strip()
             context['step'] = 4
             return ("text", "Your address?")
+
         elif step == 4:
             context['address'] = message.strip()
             context['step'] = 5
             return ("text", "Your contact (phone/email)?")
+
         elif step == 5:
             context['contact'] = message.strip()
             context['step'] = 6
-            summary = (f"Order summary:\n"
-                       f"Product: {context['product']}\n"
-                       f"Quantity: {context['quantity']}\n"
-                       f"Name: {context['customer_name']}\n"
-                       f"Address: {context['address']}\n"
-                       f"Contact: {context['contact']}\n"
-                       "Reply 'confirm' to place your order.")
+            summary = (
+                f"Order summary:\n"
+                f"Product: {context['product']}\n"
+                f"Quantity: {context['quantity']}\n"
+                f"Name: {context['customer_name']}\n"
+                f"Address: {context['address']}\n"
+                f"Contact: {context['contact']}\n"
+                "Reply 'confirm' to place your order."
+            )
             return ("text", summary)
+
         elif step == 6 and message.strip().lower() == "confirm":
             order = Order(
                 bot_request_id=bot_request.id,
@@ -161,15 +191,18 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
             )
             db.session.add(order)
             db.session.commit()
+
             send_order_email_to_owner(bot_request, order)
             context.clear()
             return ("text", f"✅ Your order (ID: {order.id}) has been placed! We will contact you soon.")
 
-    # order detection (start flow)
+    # Detect start of order
     if not image and intent == "order":
         context['flow'] = 'order'
         context['step'] = 1
         return ("text", "What product would you like to order? (Type 'cancel' to exit)")
+
+    return ("text", "I'm not sure how to help with that. Please type a product name or type /viewcart.")
 
     # ---------- IMAGE RECOGNITION LOGIC ----------
     if image:
