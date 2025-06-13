@@ -104,7 +104,7 @@ def handle_message(sender_psid, message, bot_request, image=None, context=None):
     history = get_history(bot_request.id)
     product_images = ProductImage.query.filter_by(bot_request_id=bot_request.id).all()
     product_list = [img.product_name for img in product_images]
-    catalog = "\n".join([f"{img.product_name}: {img.url}" for img in product_images])
+    catalog = "\n".join([img.product_name for img in product_images])
     intent = classify_intent(message) if not image else None
 
     # /viewcart command
